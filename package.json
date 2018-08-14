@@ -11,8 +11,8 @@
     "url": "https://github.com/innoveit/react-native-ble-manager/issues"
   },
   "keywords": [
-  	"react-native",
-  	"android",
+    "react-native",
+    "android",
     "ios",
     "ble",
     "bluetooth",
@@ -22,5 +22,8 @@
   "author": {
     "name": "Innove",
     "url": "https://github.com/innoveit"
+  },
+  "dependencies": {
+    "crypto-js": "^3.1.9-1"
   }
 }

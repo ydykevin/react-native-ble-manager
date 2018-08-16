@@ -23,6 +23,7 @@ import NoPadding from 'crypto-js/pad-nopadding';
 import Hex from 'crypto-js/enc-hex';
 import Utf8 from 'crypto-js/enc-utf8';
 import Base64 from 'crypto-js/enc-base64';
+import crypto from 'react-native-crypto';
 
 const window = Dimensions.get('window');
 const ds = new ListView.DataSource({rowHasChanged: (r1, r2) => r1 !== r2});
@@ -35,6 +36,31 @@ const miband2_service = 'FEE1';
 const act      = UUID_BASE('0004');
 const act_data = UUID_BASE('0005');
 const auth     = UUID_BASE('0009');
+
+const AB = function() {
+  var args = [...arguments];
+  
+  // Convert all arrays to buffers
+  args = args.map(function(i) {
+    if (i instanceof Array) {
+      return Buffer.from(i);
+    }
+    return i;
+  })
+  
+  // Merge into a single buffer
+  var buf = Buffer.concat(args);
+
+  // Convert into ArrayBuffer
+  var ab = new ArrayBuffer(buf.length);
+  var view = new Uint8Array(ab);
+  for (var i = 0; i < buf.length; ++i) {
+    view[i] = buf[i];
+  }
+  
+  console.log('view: '+view+' length: '+view.length);
+  return view;
+}
 
 export default class App extends Component {
   constructor(){
@@ -115,12 +141,7 @@ export default class App extends Component {
 
   handleUpdateValueForCharacteristic(data) {
     console.log('Data Update at: ' + data.peripheral + ' characteristic: ' + data.characteristic + ' data: '+ data.value);
-    //var cipher = [0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01];
-    //var encryptedtext = AES.encrypt('aaaaaaaaaaaaaaaa', '1234567890123456',{mode: ECB},{padding: NoPadding}).toString();
-    //var encryptedtext = AES.encrypt(cipher, this.key,{mode: ECB},{padding: NoPadding}).toString();
-    //var encryptedtext = AES.encrypt(data.value.substring(2,16),this.key,{mode: ECB},{padding: NoPadding});
-    //var cmd = Buffer.from(data.value).toString('hex');
-    //console.log('hex cmd: '+cmd);
+    
     //Authentication
     if(data.characteristic === auth){
       var cmd = Buffer.from(data.value).slice(0,3).toString('hex');
@@ -147,8 +168,14 @@ export default class App extends Component {
         // console.log(string);
         // console.log(data.peripheral);
 
-        
-        // this.send(peripheral,service,characteristic,string);
+        var rdn = Buffer.from(data.value).slice(3,19);
+        console.log('random number: '+ rdn);
+        var cipher = crypto.createCipheriv('aes-128-ecb', this.key, '').setAutoPadding(false);
+        var encrypted = Buffer.concat([cipher.update(rdn), cipher.final()]);
+        console.log('encrypted: '+encrypted+' length: '+encrypted.length);
+
+        this.send(peripheral,miband2_service,auth,AB([0x03,0x08],encrypted));
+
       } else if (cmd === '100301') {
         console.log('Authenticated');
       } else if (cmd === '100104') {
@@ -210,9 +237,9 @@ export default class App extends Component {
           BleManager.startNotification(peripheral.id, service, characteristic).then(() => {
             console.log('Started notification on ' + peripheral.id);
             BleManager.writeWithoutResponse(peripheral.id, service, characteristic, string).then(() => {
-              console.log('writing'+string);
+              console.log('writing: '+string);
             }).catch((error)=>{
-              console.log('Second write error', error);
+              console.log('Writing error', error);
             });
           }).catch((error) => {
             console.log('Notification error', error);

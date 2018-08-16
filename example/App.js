@@ -17,12 +17,6 @@ import {
 } from 'react-native';
 import BleManager from 'react-native-ble-manager';
 import { Buffer } from 'buffer';
-import AES from 'crypto-js/aes';
-import ECB from 'crypto-js/mode-ecb';
-import NoPadding from 'crypto-js/pad-nopadding';
-import Hex from 'crypto-js/enc-hex';
-import Utf8 from 'crypto-js/enc-utf8';
-import Base64 from 'crypto-js/enc-base64';
 import crypto from 'react-native-crypto';
 
 const window = Dimensions.get('window');
@@ -53,11 +47,12 @@ const AB = function() {
 
   // Convert into ArrayBuffer
   var ab = new ArrayBuffer(buf.length);
-  var view = new Uint8Array(ab);
+  var view = new Array(ab);
+
   for (var i = 0; i < buf.length; ++i) {
     view[i] = buf[i];
   }
-  
+
   console.log('view: '+view+' length: '+view.length);
   return view;
 }
@@ -151,22 +146,6 @@ export default class App extends Component {
         this.send(peripheral,miband2_service,auth,[0x02,0x08]);
       } else if (cmd === '100201') {
         console.log('Req Random Number OK');
-        // var cipher = data.value.slice(3).toString;
-        // console.log('cipher2: '+cipher);
-        // var encryptedtext = AES.encrypt(
-        //   Utf8.parse(cipher),
-        //   Hex.parse('30313233343536373839404142434445'),
-        //   {mode: ECB,padding: NoPadding}
-        // ).toString();
-        // console.log('encrypt: '+encryptedtext);
-
-        // var service = 'FEE1';
-        // var characteristic = '00000009-0000-3512-2118-0009AF100700';
-        // var e64 = Base64.parse(encryptedtext);
-        // var eHex = e64.toString(Hex);
-        // var string = '38'.concat(eHex).split('');
-        // console.log(string);
-        // console.log(data.peripheral);
 
         var rdn = Buffer.from(data.value).slice(3,19);
         console.log('random number: '+ rdn);
@@ -230,14 +209,14 @@ export default class App extends Component {
     }
   }
 
-  send(peripheral,service,characteristic,string){
+  send(peripheral,service,characteristic,data){
     setTimeout(() => {
       BleManager.retrieveServices(peripheral.id).then((peripheralInfo) => {
         setTimeout(() => {
           BleManager.startNotification(peripheral.id, service, characteristic).then(() => {
             console.log('Started notification on ' + peripheral.id);
-            BleManager.writeWithoutResponse(peripheral.id, service, characteristic, string).then(() => {
-              console.log('writing: '+string);
+            BleManager.writeWithoutResponse(peripheral.id, service, characteristic, data).then(() => {
+              console.log('writing: '+data);
             }).catch((error)=>{
               console.log('Writing error', error);
             });
@@ -264,63 +243,9 @@ export default class App extends Component {
           }
           console.log('Connected to ' + peripheral.id);
 
+          var data = [0x01,0x08,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x40,0x41,0x42,0x43,0x44,0x45];
+          this.send(peripheral,miband2_service,auth,data);
 
-          //var service = 'FEE1';
-          //var characteristic = '00000009-0000-3512-2118-0009af100700';
-          // var str = '28';
-          // var string = str.split('');
-          var string = [0x01,0x08,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x40,0x41,0x42,0x43,0x44,0x45];
-          this.send(peripheral,miband2_service,auth,string);
-          // setTimeout(() => {
-
-          //   /* Test read current RSSI value
-          //   BleManager.retrieveServices(peripheral.id).then((peripheralData) => {
-          //     console.log('Retrieved peripheral services', peripheralData);
-
-          //     BleManager.readRSSI(peripheral.id).then((rssi) => {
-          //       console.log('Retrieved actual RSSI value', rssi);
-          //     });
-          //   });*/
-
-          //   // Test using bleno's pizza example
-          //   // https://github.com/sandeepmistry/bleno/tree/master/examples/pizza
-          //   BleManager.retrieveServices(peripheral.id).then((peripheralInfo) => {
-          //     console.log(peripheralInfo);
-          //     //var service = '0000fee1-0000-1000-8000-00805f9b34fb';
-          //     var service = 'FEE1';
-          //     var authCharacteristic = '00000009-0000-3512-2118-0009af100700';
-          //     //var oe = new Buffer([0x01,0x08]);
-          //     //console.log(oe);
-          //     console.log('---');
-          //     //var key = new Buffer('30313233343536373839404142434445', 'hex');
-          //     //var oek = Buffer.concat([oe,key]);
-          //     var oek = [0x01,0x08,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x40,0x41,0x42,0x43,0x44,0x45];
-          //     //const oek = new Buffer('010830313233343536373839404142434445', 'hex');
-          //     console.log(oek);
-          //     console.log('---');
-          //     //var te = new Buffer([0x02,0x08]);
-          //     var te = [0x02,0x08];
-          //     console.log(te);
-          //     setTimeout(() => {
-          //       BleManager.startNotification(peripheral.id, service, authCharacteristic).then(() => {
-          //         console.log('Started notification on ' + peripheral.id);
-          //         //var hex = new Buffer(oek, "base64").toString('hex');
-          //         // BleManager.writeWithoutResponse(peripheral.id, service, authCharacteristic, oek).then(() => {
-          //         // }).catch((error)=>{
-          //         //   console.log('First write error', error);
-          //         // });
-          //         //hex = new Buffer(te, "base64").toString('hex'); 
-          //         BleManager.writeWithoutResponse(peripheral.id, service, authCharacteristic, te).then(() => {
-          //         }).catch((error)=>{
-          //           console.log('Second write error', error);
-          //         });
-          //       }).catch((error) => {
-          //         console.log('Notification error', error);
-          //       });
-          //     }, 200);
-          //   });
-
-          // }, 900);
         }).catch((error) => {
           console.log('Connection error', error);
         });

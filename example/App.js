@@ -27,6 +27,7 @@ const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
 
 const UUID_BASE = (x) => `0000${x}-0000-3512-2118-0009AF100700`;
 const miband2_service = 'FEE1';
+const miband_service  = 'FEE0';
 const act      = UUID_BASE('0004');
 const act_data = UUID_BASE('0005');
 const auth     = UUID_BASE('0009');
@@ -55,6 +56,10 @@ const AB = function() {
 
   console.log('view: '+view+' length: '+view.length);
   return view;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 export default class App extends Component {
@@ -157,6 +162,33 @@ export default class App extends Component {
 
       } else if (cmd === '100301') {
         console.log('Authenticated');
+
+        var head = [0x01,0x01];
+        var tail = [0x00,0x28]; // timezone * 4, Sydney = 10 * 4
+
+        var time    = new Date();
+        var year    = time.getFullYear();
+        var month   = time.getMonth() + 1;
+        var date    = time.getDate();
+        //var hour    = time.getHours();
+        //var minute  = time.getMinutes();
+        var hour    = 15;
+        var minute  = 0;
+
+        console.log('time: '+time+' year: '+year+' month: '+month+' date: '+date+' hour: '+hour+' minute: '+minute);
+
+        var yearByte = [ year & 0xff, (year >> 8) & 0xff];
+        //console.log('yearByte: '+yearByte[0]+ '  '+yearByte[1]);
+        var arr = AB(head,yearByte,[month],[date],[hour],[minute],tail);
+        console.log('arr: '+arr);
+        this.send(peripheral,miband_service,act,arr);
+        //sleep(10000);
+        this.beginNotification(peripheral,miband_service,act_data);
+        setTimeout(() => {
+          this.send(peripheral,miband_service,act,[0x02]);
+        },3000);
+        
+        
       } else if (cmd === '100104') {
         console.log('Set New Key FAIL');
       } else if (cmd === '100204') {
@@ -165,10 +197,10 @@ export default class App extends Component {
         console.log('Encryption Key Auth Fail, should send new key...')
         //this.authSendNewKey(this.key)
       }
-    } else {
+    } else if (data.characteristic === act_data){
       var cmd = Buffer.from(data.value).toString('hex');
-      console.log('not auth: '+ cmd);
-    }
+      console.log('act data: '+ cmd);
+    } 
   
   }
 
@@ -207,6 +239,15 @@ export default class App extends Component {
       peripherals.set(peripheral.id, peripheral);
       this.setState({ peripherals })
     }
+  }
+
+  beginNotification(peripheral,service,characteristic){
+    setTimeout(() => {
+      BleManager.startNotification(peripheral.id, service, characteristic).then(() => {
+      }).catch((error) => {
+        console.log('Notification error', error);
+      });
+    }, 200);
   }
 
   send(peripheral,service,characteristic,data){

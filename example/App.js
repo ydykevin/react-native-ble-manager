@@ -143,7 +143,8 @@ export default class App extends Component {
     console.log('Data Update at: ' + data.peripheral + ' characteristic: ' + data.characteristic + ' data: '+ data.value);
     
     //Authentication
-    if(data.characteristic === auth){
+    if(data.characteristic.toUpperCase() === auth){
+      console.log('==auth');
       var cmd = Buffer.from(data.value).slice(0,3).toString('hex');
       var peripheral = this.state.peripherals.get(data.peripheral);
       if (cmd === '100101') {         
@@ -197,10 +198,10 @@ export default class App extends Component {
         console.log('Encryption Key Auth Fail, should send new key...')
         //this.authSendNewKey(this.key)
       }
-    } else if (data.characteristic === act_data){
+    } else if (data.characteristic.toUpperCase() === act_data){
       var cmd = Buffer.from(data.value).toString('hex');
       console.log('act data: '+ cmd);
-    } 
+    }
   
   }
 

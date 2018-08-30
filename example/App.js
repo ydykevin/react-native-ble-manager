@@ -69,7 +69,8 @@ export default class App extends Component {
     this.state = {
       scanning:false,
       peripherals: new Map(),
-      appState: ''
+      appState: '',
+      lastSyncMin: new Date(),
     }
 
     this.handleDiscoverPeripheral = this.handleDiscoverPeripheral.bind(this);
@@ -79,6 +80,8 @@ export default class App extends Component {
     this.handleAppStateChange = this.handleAppStateChange.bind(this);
 
     this.key = [0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x40,0x41,0x42,0x43,0x44,0x45];
+    this.tableData = [];
+    this.tableData.push(['Time','Kind','Intensity','Step','Heart Rate']);
   }
 
   componentDidMount() {
@@ -144,12 +147,11 @@ export default class App extends Component {
     
     //Authentication
     if(data.characteristic.toUpperCase() === auth){
-      console.log('==auth');
       var cmd = Buffer.from(data.value).slice(0,3).toString('hex');
       var peripheral = this.state.peripherals.get(data.peripheral);
       if (cmd === '100101') {         
         console.log('Set New Key OK');
-        this.send(peripheral,miband2_service,auth,[0x02,0x08]);
+        this.sendWithoutNotification(peripheral,miband2_service,auth,[0x02,0x08]);
       } else if (cmd === '100201') {
         console.log('Req Random Number OK');
 
@@ -159,7 +161,7 @@ export default class App extends Component {
         var encrypted = Buffer.concat([cipher.update(rdn), cipher.final()]);
         console.log('encrypted: '+encrypted+' length: '+encrypted.length);
 
-        this.send(peripheral,miband2_service,auth,AB([0x03,0x08],encrypted));
+        this.sendWithoutNotification(peripheral,miband2_service,auth,AB([0x03,0x08],encrypted));
 
       } else if (cmd === '100301') {
         console.log('Authenticated');
@@ -173,9 +175,11 @@ export default class App extends Component {
         var date    = time.getDate();
         //var hour    = time.getHours();
         //var minute  = time.getMinutes();
-        var hour    = 17;
+        var hour    = 0;
         var minute  = 0;
-
+        time.setHours(hour);
+        time.setMinutes(minute);
+        this.setState({lastSyncMin:time});
         console.log('time: '+time+' year: '+year+' month: '+month+' date: '+date+' hour: '+hour+' minute: '+minute);
 
         var yearByte = [ year & 0xff, (year >> 8) & 0xff];
@@ -186,10 +190,9 @@ export default class App extends Component {
         //sleep(10000);
         this.beginNotification(peripheral,miband_service,act_data);
         setTimeout(() => {
-          this.send(peripheral,miband_service,act,[0x02]);
-        },3000);
-        
-        
+          this.sendWithoutNotification(peripheral,miband_service,act,[0x02]);
+        },5000);
+
       } else if (cmd === '100104') {
         console.log('Set New Key FAIL');
       } else if (cmd === '100204') {
@@ -199,8 +202,29 @@ export default class App extends Component {
         //this.authSendNewKey(this.key)
       }
     } else if (data.characteristic.toUpperCase() === act_data){
-      var cmd = Buffer.from(data.value).toString('hex');
-      console.log('act data: '+ cmd);
+      //var cmd = Buffer.from(data.value).toString('hex');
+      //console.log('act data: '+ cmd);
+      // for(i = 1; i < 20; i++){
+      //   tableData.push([i + '1',i + '2',i + '3',i + '4',i + '5']);
+      // }
+      for(var i = 1; i < data.value.length; i+=4){
+        var kind      = data.value[i] & 0xff;
+        var intensity = data.value[i+1] & 0xff;
+        var step      = data.value[i+2] & 0xff;
+        var heartRate = data.value[i+3] & 0xff;
+        console.log('Kind: '+ kind +' Intensity: '+ intensity +' Step: '+ step +' Heart Rate: '+ heartRate);
+        var time    = this.state.lastSyncMin;
+        var year    = time.getFullYear();
+        var month   = (time.getMonth()+1)<10?'0'+(time.getMonth()+1):(time.getMonth()+1);
+        var date    = time.getDate()<10?'0'+time.getDate():time.getDate();
+        var hour    = time.getHours()<10?'0'+time.getHours():time.getHours();
+        var minute  = time.getMinutes()<10?'0'+time.getMinutes():time.getMinutes();
+        var timeToPrint = date + '/' + month + '/' + year + ' ' + hour + ':' + minute; 
+        this.tableData.push([timeToPrint,kind,intensity,step,heartRate]);
+        var newLastSyncMin = new Date(this.state.lastSyncMin.getTime() + 60 * 1000);
+        this.setState({lastSyncMin:newLastSyncMin});
+      }
+      this.forceUpdate();
     }
   
   }
@@ -211,6 +235,8 @@ export default class App extends Component {
   }
 
   startScan() {
+    this.tableData = [['Time','Kind','Intensity','Step','Heart Rate']];
+    this.forceUpdate();
     if (!this.state.scanning) {
       this.setState({peripherals: new Map()});
       BleManager.scan([], 3, true).then((results) => {
@@ -248,7 +274,7 @@ export default class App extends Component {
       }).catch((error) => {
         console.log('Notification error', error);
       });
-    }, 200);
+    }, 1500);
   }
 
   send(peripheral,service,characteristic,data){
@@ -257,17 +283,33 @@ export default class App extends Component {
         setTimeout(() => {
           BleManager.startNotification(peripheral.id, service, characteristic).then(() => {
             console.log('Started notification on ' + peripheral.id);
-            BleManager.writeWithoutResponse(peripheral.id, service, characteristic, data).then(() => {
-              console.log('writing: '+data);
-            }).catch((error)=>{
-              console.log('Writing error', error);
-            });
+            setTimeout(() => {
+              BleManager.writeWithoutResponse(peripheral.id, service, characteristic, data).then(() => {
+                console.log('writing: '+data);
+              }).catch((error)=>{
+                console.log('Writing error', error);
+              });
+            },1000);
           }).catch((error) => {
             console.log('Notification error', error);
           });
-        }, 200);
+        }, 1500);
       });
-    },900);
+    },2700);
+  }
+
+  sendWithoutNotification(peripheral,service,characteristic,data){
+    setTimeout(() => {
+      BleManager.retrieveServices(peripheral.id).then((peripheralInfo) => {
+        setTimeout(() => {
+          BleManager.writeWithoutResponse(peripheral.id, service, characteristic, data).then(() => {
+            console.log('writing: '+data);
+          }).catch((error)=>{
+            console.log('Writing error', error);
+          });
+        },1000);
+      });
+    },2700);
   }
 
   test(peripheral) {
@@ -285,6 +327,19 @@ export default class App extends Component {
           }
           console.log('Connected to ' + peripheral.id);
 
+          // BleManager.retrieveServices(peripheral.id).then(() => {
+          //   setTimeout(() => {
+          //     BleManager.startNotification(peripheral.id, miband2_service,auth).then(() => {
+          //       setTimeout(() => {
+          //         BleManager.startNotification(peripheral.id,miband_service,act).then(()=>{
+          //           setTimeout(() => {
+          //             BleManager.startNotification(peripheral.id,miband_service,act_data);
+          //           },1500);
+          //         });
+          //       },1500);
+          //     });
+          //   },1500);
+          // });
           var data = [0x01,0x08,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x40,0x41,0x42,0x43,0x44,0x45];
           this.send(peripheral,miband2_service,auth,data);
 
@@ -298,7 +353,10 @@ export default class App extends Component {
   render() {
     const list = Array.from(this.state.peripherals.values());
     const dataSource = ds.cloneWithRows(list);
+    const arr = Array.from([1,2,3,4,5,6,7,8,9,0]);
+    const dataList = ds.cloneWithRows(arr);
 
+    
 
     return (
       <View style={styles.container}>
@@ -329,6 +387,25 @@ export default class App extends Component {
               );
             }}
           />
+        </ScrollView>
+        <ScrollView style={styles.scroll}>
+          <ScrollView  horizontal = {true} showsHorizontalScrollIndicator= {false}>
+                <View>
+                  {
+                    this.tableData.map((eachRow,j) => {
+                          return (
+                            <View style={{flexDirection:'row'}} key = {j}>
+                                {
+                                  eachRow.map((eachItem,i) => {
+                                    return <View key = {i} style={{width:i==0?150:70,height:40,backgroundColor:((j%2)?'white':'#ccc'),alignItems:'center',justifyContent:'center'}}><Text>{eachItem}</Text></View>
+                                  })
+                                }
+                            </View>
+                          );
+                      })
+                  }
+                </View>
+            </ScrollView>
         </ScrollView>
       </View>
     );

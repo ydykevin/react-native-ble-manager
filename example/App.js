@@ -172,7 +172,7 @@ export default class App extends Component {
         var date    = time.getDate();
         //var hour    = time.getHours();
         //var minute  = time.getMinutes();
-        var hour    = 15;
+        var hour    = 17;
         var minute  = 0;
 
         console.log('time: '+time+' year: '+year+' month: '+month+' date: '+date+' hour: '+hour+' minute: '+minute);

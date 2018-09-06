@@ -26,10 +26,12 @@ const BleManagerModule = NativeModules.BleManager;
 const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
 
 const UUID_BASE = (x) => `0000${x}-0000-3512-2118-0009AF100700`;
-const miband2_service = 'FEE1';
-const miband_service  = 'FEE0';
+const miband2_service    = 'FEE1';
+const miband_service     = 'FEE0';
+const deviceInfo_service = '180A';
 const act      = UUID_BASE('0004');
 const act_data = UUID_BASE('0005');
+const batt     = UUID_BASE('0006');
 const auth     = UUID_BASE('0009');
 
 const AB = function() {
@@ -56,10 +58,6 @@ const AB = function() {
 
   console.log('view: '+view+' length: '+view.length);
   return view;
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 export default class App extends Component {
@@ -151,7 +149,8 @@ export default class App extends Component {
       var peripheral = this.state.peripherals.get(data.peripheral);
       if (cmd === '100101') {         
         console.log('Set New Key OK');
-        this.sendWithoutNotification(peripheral,miband2_service,auth,[0x02,0x08]);
+        //this.sendWithoutNotification(peripheral,miband2_service,auth,[0x02,0x08]);
+        BleManager.writeWithoutResponse(peripheral.id,miband2_service,auth,[0x02,0x08]);
       } else if (cmd === '100201') {
         console.log('Req Random Number OK');
 
@@ -161,38 +160,66 @@ export default class App extends Component {
         var encrypted = Buffer.concat([cipher.update(rdn), cipher.final()]);
         console.log('encrypted: '+encrypted+' length: '+encrypted.length);
 
-        this.sendWithoutNotification(peripheral,miband2_service,auth,AB([0x03,0x08],encrypted));
-
+        //this.sendWithoutNotification(peripheral,miband2_service,auth,AB([0x03,0x08],encrypted));
+        BleManager.writeWithoutResponse(peripheral.id,miband2_service,auth,AB([0x03,0x08],encrypted));
       } else if (cmd === '100301') {
         console.log('Authenticated');
+        
+        //BleManager.startNotification(peripheral.id,miband_service,batt).then(()=>{
+          //setTimeout(()=>{
+            BleManager.read(peripheral.id,miband_service,batt).then((data)=>{
+              var battery = data[1];
+              console.log('battery inside: '+battery);
 
-        var head = [0x01,0x01];
-        var tail = [0x00,0x28]; // timezone * 4, Sydney = 10 * 4
+              var head = [0x01,0x01];
+              var tail = [0x00,0x28]; // timezone * 4, Sydney = 10 * 4
 
-        var time    = new Date();
-        var year    = time.getFullYear();
-        var month   = time.getMonth() + 1;
-        var date    = time.getDate();
-        //var hour    = time.getHours();
-        //var minute  = time.getMinutes();
-        var hour    = 0;
-        var minute  = 0;
-        time.setHours(hour);
-        time.setMinutes(minute);
-        this.setState({lastSyncMin:time});
-        console.log('time: '+time+' year: '+year+' month: '+month+' date: '+date+' hour: '+hour+' minute: '+minute);
+              var time    = new Date();
+              var year    = time.getFullYear();
+              var month   = time.getMonth() + 1;
+              var date    = time.getDate();
+              //var hour    = time.getHours();
+              //var minute  = time.getMinutes();
+              var hour    = 20;
+              var minute  = 10;
+              time.setHours(hour);
+              time.setMinutes(minute);
+              this.setState({lastSyncMin:time});
+              console.log('time: '+time+' year: '+year+' month: '+month+' date: '+date+' hour: '+hour+' minute: '+minute);
 
-        var yearByte = [ year & 0xff, (year >> 8) & 0xff];
-        //console.log('yearByte: '+yearByte[0]+ '  '+yearByte[1]);
-        var arr = AB(head,yearByte,[month],[date],[hour],[minute],tail);
-        console.log('arr: '+arr);
-        this.send(peripheral,miband_service,act,arr);
-        //sleep(10000);
-        this.beginNotification(peripheral,miband_service,act_data);
-        setTimeout(() => {
-          this.sendWithoutNotification(peripheral,miband_service,act,[0x02]);
-        },5000);
+              var yearByte = [ year & 0xff, (year >> 8) & 0xff];
+              
+              var arr = AB(head,yearByte,[month],[date],[hour],[minute],tail);
+              console.log('arr: '+arr);
 
+              //this.send(peripheral,miband_service,act,arr);
+              
+              setTimeout(()=>{
+                BleManager.retrieveServices(peripheral.id).then(() => {
+                  setTimeout(()=>{
+                    BleManager.startNotification(peripheral.id, miband_service, act);//.then(() => {
+                      setTimeout(()=>{
+                        BleManager.writeWithoutResponse(peripheral.id, miband_service, act, arr).then(() => {
+                          setTimeout(()=>{
+                            BleManager.retrieveServices(peripheral.id).then(() => {
+                              setTimeout(()=>{
+                                BleManager.startNotification(peripheral.id,miband_service,act_data);//.then(()=>{
+                                  setTimeout(() => {
+                                    BleManager.writeWithoutResponse(peripheral.id,miband_service,act,[0x02]);
+                                  },500);
+                                //});
+                              },200);
+                            });
+                          },900);
+                        });
+                      },500,arr);
+                    //},arr);
+                  },200,arr);
+                },arr);
+              },900,arr);
+            });
+          //},500);
+        //});
       } else if (cmd === '100104') {
         console.log('Set New Key FAIL');
       } else if (cmd === '100204') {
@@ -202,11 +229,7 @@ export default class App extends Component {
         //this.authSendNewKey(this.key)
       }
     } else if (data.characteristic.toUpperCase() === act_data){
-      //var cmd = Buffer.from(data.value).toString('hex');
-      //console.log('act data: '+ cmd);
-      // for(i = 1; i < 20; i++){
-      //   tableData.push([i + '1',i + '2',i + '3',i + '4',i + '5']);
-      // }
+
       for(var i = 1; i < data.value.length; i+=4){
         var kind      = data.value[i] & 0xff;
         var intensity = data.value[i+1] & 0xff;
@@ -220,7 +243,8 @@ export default class App extends Component {
         var hour    = time.getHours()<10?'0'+time.getHours():time.getHours();
         var minute  = time.getMinutes()<10?'0'+time.getMinutes():time.getMinutes();
         var timeToPrint = date + '/' + month + '/' + year + ' ' + hour + ':' + minute; 
-        this.tableData.push([timeToPrint,kind,intensity,step,heartRate]);
+        //this.tableData.push([timeToPrint,kind,intensity,step,heartRate]);
+        this.tableData.push([timeToPrint,kind,intensity,step]);
         var newLastSyncMin = new Date(this.state.lastSyncMin.getTime() + 60 * 1000);
         this.setState({lastSyncMin:newLastSyncMin});
       }
@@ -235,7 +259,7 @@ export default class App extends Component {
   }
 
   startScan() {
-    this.tableData = [['Time','Kind','Intensity','Step','Heart Rate']];
+    this.tableData = [['Time','Kind','Intensity','Step']];
     this.forceUpdate();
     if (!this.state.scanning) {
       this.setState({peripherals: new Map()});
@@ -268,49 +292,50 @@ export default class App extends Component {
     }
   }
 
-  beginNotification(peripheral,service,characteristic){
-    setTimeout(() => {
-      BleManager.startNotification(peripheral.id, service, characteristic).then(() => {
-      }).catch((error) => {
-        console.log('Notification error', error);
-      });
-    }, 1500);
-  }
+  // beginNotification(peripheral,service,characteristic){
+  //   setTimeout(() => {
+  //     BleManager.startNotification(peripheral.id, service, characteristic).then(() => {
 
-  send(peripheral,service,characteristic,data){
-    setTimeout(() => {
-      BleManager.retrieveServices(peripheral.id).then((peripheralInfo) => {
-        setTimeout(() => {
-          BleManager.startNotification(peripheral.id, service, characteristic).then(() => {
-            console.log('Started notification on ' + peripheral.id);
-            setTimeout(() => {
-              BleManager.writeWithoutResponse(peripheral.id, service, characteristic, data).then(() => {
-                console.log('writing: '+data);
-              }).catch((error)=>{
-                console.log('Writing error', error);
-              });
-            },1000);
-          }).catch((error) => {
-            console.log('Notification error', error);
-          });
-        }, 1500);
-      });
-    },2700);
-  }
+  //     }).catch((error) => {
+  //       console.log('Notification error', error);
+  //     });
+  //   }, 700);
+  // }
 
-  sendWithoutNotification(peripheral,service,characteristic,data){
-    setTimeout(() => {
-      BleManager.retrieveServices(peripheral.id).then((peripheralInfo) => {
-        setTimeout(() => {
-          BleManager.writeWithoutResponse(peripheral.id, service, characteristic, data).then(() => {
-            console.log('writing: '+data);
-          }).catch((error)=>{
-            console.log('Writing error', error);
-          });
-        },1000);
-      });
-    },2700);
-  }
+  // send(peripheral,service,characteristic,data){
+  //   setTimeout(() => {
+  //     BleManager.retrieveServices(peripheral.id).then((peripheralInfo) => {
+  //       setTimeout(() => {
+  //         BleManager.startNotification(peripheral.id, service, characteristic).then(() => {
+  //           console.log('Started notification on ' + peripheral.id);
+  //           //setTimeout(() => {
+  //             BleManager.writeWithoutResponse(peripheral.id, service, characteristic, data).then(() => {
+  //               console.log('writing: '+data);
+  //             }).catch((error)=>{
+  //               console.log('Writing error', error);
+  //             });
+  //           //},5000);
+  //         }).catch((error) => {
+  //           console.log('Notification error', error);
+  //         });
+  //       }, 700);
+  //     });
+  //   },1200);
+  // }
+
+  // sendWithoutNotification(peripheral,service,characteristic,data){
+  //   //setTimeout(() => {
+  //     BleManager.retrieveServices(peripheral.id).then((peripheralInfo) => {
+  //       //setTimeout(() => {
+  //         BleManager.writeWithoutResponse(peripheral.id, service, characteristic, data).then(() => {
+  //           console.log('writing: '+data);
+  //         }).catch((error)=>{
+  //           console.log('Writing error', error);
+  //         });
+  //       //},700);
+  //     });
+  //   //},1000);
+  // }
 
   test(peripheral) {
     if (peripheral){
@@ -327,21 +352,27 @@ export default class App extends Component {
           }
           console.log('Connected to ' + peripheral.id);
 
-          // BleManager.retrieveServices(peripheral.id).then(() => {
-          //   setTimeout(() => {
-          //     BleManager.startNotification(peripheral.id, miband2_service,auth).then(() => {
-          //       setTimeout(() => {
-          //         BleManager.startNotification(peripheral.id,miband_service,act).then(()=>{
-          //           setTimeout(() => {
-          //             BleManager.startNotification(peripheral.id,miband_service,act_data);
-          //           },1500);
-          //         });
-          //       },1500);
-          //     });
-          //   },1500);
-          // });
-          var data = [0x01,0x08,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x40,0x41,0x42,0x43,0x44,0x45];
-          this.send(peripheral,miband2_service,auth,data);
+          //this.send(peripheral,miband2_service,auth,data);
+
+          setTimeout(() => {
+            BleManager.retrieveServices(peripheral.id).then(() => {
+              setTimeout(() => {
+                BleManager.startNotification(peripheral.id, miband2_service, auth);//.then(() => {
+                  console.log('Started notification on ' + peripheral.id);
+                  setTimeout(() => {
+                    var data = [0x01,0x08,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x40,0x41,0x42,0x43,0x44,0x45];
+                    BleManager.writeWithoutResponse(peripheral.id, miband2_service, auth, data).then(() => {
+                      console.log('writing: '+data);
+                    }).catch((error)=>{
+                      console.log('Writing error', error);
+                    });
+                  },500);
+                // }).catch((error) => {
+                //   console.log('Notification error', error);
+                // });
+              }, 200);
+            });
+          },900);
 
         }).catch((error) => {
           console.log('Connection error', error);
